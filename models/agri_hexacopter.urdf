@@ -1,0 +1,138 @@
+<?xml version="1.0"?>
+<robot name="agri_hexacopter_pro_v2">
+
+  <!-- =============================================================== -->
+  <!-- 1. MATÉRIAUX                                                    -->
+  <!-- =============================================================== -->
+  <material name="dark_grey"><color rgba="0.2 0.2 0.2 1"/></material>
+  <material name="carbon"><color rgba="0.1 0.1 0.1 1"/></material>
+  <material name="blue_water"><color rgba="0 0.4 0.8 1"/></material>
+  <material name="safety_orange"><color rgba="1 0.3 0 1"/></material>
+  <material name="sensor_green"><color rgba="0 0.8 0.2 1"/></material>
+  <material name="white"><color rgba="1 1 1 1"/></material>
+  <material name="white_prop"><color rgba="1 1 1 0.6"/></material>
+
+  <!-- =============================================================== -->
+  <!-- 2. CHÂSSIS CENTRAL (Calculs d'inertie conservés)               -->
+  <!-- =============================================================== -->
+  <link name="base_link">
+    <inertial>
+      <mass value="6.5"/> 
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.08" ixy="0" ixz="0" iyy="0.08" iyz="0" izz="0.12"/>
+    </inertial>
+    <visual>
+      <geometry><cylinder radius="0.22" length="0.15"/></geometry>
+      <material name="dark_grey"/>
+    </visual>
+    <collision> <!-- Ajouté pour stopper la chute -->
+      <geometry><cylinder radius="0.22" length="0.15"/></geometry>
+    </collision>
+  </link>
+
+  <!-- =============================================================== -->
+  <!-- 3. CAPTEURS (Identiques au premier fichier)                    -->
+  <!-- =============================================================== -->
+  <link name="rtk_module">
+    <visual><geometry><cylinder radius="0.05" length="0.04"/></geometry><material name="white"/></visual>
+  </link>
+  <joint name="joint_rtk" type="fixed"><parent link="base_link"/><child link="rtk_module"/><origin xyz="0 0 0.12"/></joint>
+
+  <link name="lidar_sensor">
+    <visual><geometry><box size="0.06 0.08 0.04"/></geometry><material name="safety_orange"/></visual>
+  </link>
+  <joint name="joint_lidar" type="fixed"><parent link="base_link"/><child link="lidar_sensor"/><origin xyz="0.22 0 0.03"/></joint>
+
+  <link name="flowmeter">
+    <visual><geometry><cylinder radius="0.02" length="0.06"/></geometry><material name="sensor_green"/></visual>
+  </link>
+  <joint name="joint_flowmeter" type="fixed"><parent link="base_link"/><child link="flowmeter"/><origin xyz="0 0 -0.09"/></joint>
+
+  <!-- =============================================================== -->
+  <!-- 4. TRAIN D'ATTERRISSAGE (Avec collisions)                      -->
+  <!-- =============================================================== -->
+  <link name="leg_left">
+    <visual><origin xyz="0 0 -0.2"/><geometry><box size="0.02 0.02 0.4"/></geometry><material name="carbon"/></visual>
+  </link>
+  <joint name="joint_leg_left" type="fixed"><parent link="base_link"/><child link="leg_left"/><origin xyz="0 0.15 -0.05"/></joint>
+  <link name="foot_left">
+    <visual><geometry><cylinder radius="0.015" length="0.5"/></geometry><material name="carbon"/></visual>
+    <collision><geometry><cylinder radius="0.015" length="0.5"/></geometry></collision>
+  </link>
+  <joint name="joint_foot_left" type="fixed"><parent link="leg_left"/><child link="foot_left"/><origin xyz="0 0 -0.4" rpy="1.57 0 0"/></joint>
+
+  <link name="leg_right">
+    <visual><origin xyz="0 0 -0.2"/><geometry><box size="0.02 0.02 0.4"/></geometry><material name="carbon"/></visual>
+  </link>
+  <joint name="joint_leg_right" type="fixed"><parent link="base_link"/><child link="leg_right"/><origin xyz="0 -0.15 -0.05"/></joint>
+  <link name="foot_right">
+    <visual><geometry><cylinder radius="0.015" length="0.5"/></geometry><material name="carbon"/></visual>
+    <collision><geometry><cylinder radius="0.015" length="0.5"/></geometry></collision>
+  </link>
+  <joint name="joint_foot_right" type="fixed"><parent link="leg_right"/><child link="foot_right"/><origin xyz="0 0 -0.4" rpy="1.57 0 0"/></joint>
+
+  <!-- =============================================================== -->
+  <!-- 5. LES 6 BRAS + MOTEURS + HÉLICES + BUSES                      -->
+  <!-- =============================================================== -->
+
+  <!-- Bras 1 (0°) -->
+  <link name="arm_1"><visual><origin xyz="0.25 0 0" rpy="0 1.57 0"/><geometry><cylinder radius="0.02" length="0.5"/></geometry><material name="carbon"/></visual></link>
+  <joint name="joint_arm_1" type="fixed"><parent link="base_link"/><child link="arm_1"/><origin xyz="0 0 0" rpy="0 0 0"/></joint>
+  <link name="motor_1"><visual><geometry><cylinder radius="0.04" length="0.05"/></geometry><material name="dark_grey"/></visual></link>
+  <joint name="joint_motor_1" type="fixed"><parent link="arm_1"/><child link="motor_1"/><origin xyz="0.5 0 0.03"/></joint>
+  <link name="prop_1"><visual><geometry><cylinder radius="0.15" length="0.005"/></geometry><material name="white_prop"/></visual></link>
+  <joint name="joint_prop_1" type="continuous"><parent link="motor_1"/><child link="prop_1"/><origin xyz="0 0 0.03"/><axis xyz="0 0 1"/></joint>
+  <link name="nozzle_1"><visual><geometry><sphere radius="0.03"/></geometry><material name="blue_water"/></visual></link>
+  <joint name="joint_nozzle_1" type="fixed"><parent link="motor_1"/><child link="nozzle_1"/><origin xyz="0 0 -0.08"/></joint>
+
+  <!-- Bras 2 (60° / 1.047 rad) -->
+  <link name="arm_2"><visual><origin xyz="0.25 0 0" rpy="0 1.57 0"/><geometry><cylinder radius="0.02" length="0.5"/></geometry><material name="carbon"/></visual></link>
+  <joint name="joint_arm_2" type="fixed"><parent link="base_link"/><child link="arm_2"/><origin xyz="0 0 0" rpy="0 0 1.047"/></joint>
+  <link name="motor_2"><visual><geometry><cylinder radius="0.04" length="0.05"/></geometry><material name="dark_grey"/></visual></link>
+  <joint name="joint_motor_2" type="fixed"><parent link="arm_2"/><child link="motor_2"/><origin xyz="0.5 0 0.03"/></joint>
+  <link name="prop_2"><visual><geometry><cylinder radius="0.15" length="0.005"/></geometry><material name="white_prop"/></visual></link>
+  <joint name="joint_prop_2" type="continuous"><parent link="motor_2"/><child link="prop_2"/><origin xyz="0 0 0.03"/><axis xyz="0 0 1"/></joint>
+  <link name="nozzle_2"><visual><geometry><sphere radius="0.03"/></geometry><material name="blue_water"/></visual></link>
+  <joint name="joint_nozzle_2" type="fixed"><parent link="motor_2"/><child link="nozzle_2"/><origin xyz="0 0 -0.08"/></joint>
+
+  <!-- Bras 3 (120° / 2.094 rad) -->
+  <link name="arm_3"><visual><origin xyz="0.25 0 0" rpy="0 1.57 0"/><geometry><cylinder radius="0.02" length="0.5"/></geometry><material name="carbon"/></visual></link>
+  <joint name="joint_arm_3" type="fixed"><parent link="base_link"/><child link="arm_3"/><origin xyz="0 0 0" rpy="0 0 2.094"/></joint>
+  <link name="motor_3"><visual><geometry><cylinder radius="0.04" length="0.05"/></geometry><material name="dark_grey"/></visual></link>
+  <joint name="joint_motor_3" type="fixed"><parent link="arm_3"/><child link="motor_3"/><origin xyz="0.5 0 0.03"/></joint>
+  <link name="prop_3"><visual><geometry><cylinder radius="0.15" length="0.005"/></geometry><material name="white_prop"/></visual></link>
+  <joint name="joint_prop_3" type="continuous"><parent link="motor_3"/><child link="prop_3"/><origin xyz="0 0 0.03"/><axis xyz="0 0 1"/></joint>
+  <link name="nozzle_3"><visual><geometry><sphere radius="0.03"/></geometry><material name="blue_water"/></visual></link>
+  <joint name="joint_nozzle_3" type="fixed"><parent link="motor_3"/><child link="nozzle_3"/><origin xyz="0 0 -0.08"/></joint>
+
+  <!-- Bras 4 (180° / 3.141 rad) -->
+  <link name="arm_4"><visual><origin xyz="0.25 0 0" rpy="0 1.57 0"/><geometry><cylinder radius="0.02" length="0.5"/></geometry><material name="carbon"/></visual></link>
+  <joint name="joint_arm_4" type="fixed"><parent link="base_link"/><child link="arm_4"/><origin xyz="0 0 0" rpy="0 0 3.141"/></joint>
+  <link name="motor_4"><visual><geometry><cylinder radius="0.04" length="0.05"/></geometry><material name="dark_grey"/></visual></link>
+  <joint name="joint_motor_4" type="fixed"><parent link="arm_4"/><child link="motor_4"/><origin xyz="0.5 0 0.03"/></joint>
+  <link name="prop_4"><visual><geometry><cylinder radius="0.15" length="0.005"/></geometry><material name="white_prop"/></visual></link>
+  <joint name="joint_prop_4" type="continuous"><parent link="motor_4"/><child link="prop_4"/><origin xyz="0 0 0.03"/><axis xyz="0 0 1"/></joint>
+  <link name="nozzle_4"><visual><geometry><sphere radius="0.03"/></geometry><material name="blue_water"/></visual></link>
+  <joint name="joint_nozzle_4" type="fixed"><parent link="motor_4"/><child link="nozzle_4"/><origin xyz="0 0 -0.08"/></joint>
+
+  <!-- Bras 5 (240° / 4.188 rad) -->
+  <link name="arm_5"><visual><origin xyz="0.25 0 0" rpy="0 1.57 0"/><geometry><cylinder radius="0.02" length="0.5"/></geometry><material name="carbon"/></visual></link>
+  <joint name="joint_arm_5" type="fixed"><parent link="base_link"/><child link="arm_5"/><origin xyz="0 0 0" rpy="0 0 4.188"/></joint>
+  <link name="motor_5"><visual><geometry><cylinder radius="0.04" length="0.05"/></geometry><material name="dark_grey"/></visual></link>
+  <joint name="joint_motor_5" type="fixed"><parent link="arm_5"/><child link="motor_5"/><origin xyz="0.5 0 0.03"/></joint>
+  <link name="prop_5"><visual><geometry><cylinder radius="0.15" length="0.005"/></geometry><material name="white_prop"/></visual></link>
+  <joint name="joint_prop_5" type="continuous"><parent link="motor_5"/><child link="prop_5"/><origin xyz="0 0 0.03"/><axis xyz="0 0 1"/></joint>
+  <link name="nozzle_5"><visual><geometry><sphere radius="0.03"/></geometry><material name="blue_water"/></visual></link>
+  <joint name="joint_nozzle_5" type="fixed"><parent link="motor_5"/><child link="nozzle_5"/><origin xyz="0 0 -0.08"/></joint>
+
+  <!-- Bras 6 (300° / 5.235 rad) -->
+  <link name="arm_6"><visual><origin xyz="0.25 0 0" rpy="0 1.57 0"/><geometry><cylinder radius="0.02" length="0.5"/></geometry><material name="carbon"/></visual></link>
+  <joint name="joint_arm_6" type="fixed"><parent link="base_link"/><child link="arm_6"/><origin xyz="0 0 0" rpy="0 0 5.235"/></joint>
+  <link name="motor_6"><visual><geometry><cylinder radius="0.04" length="0.05"/></geometry><material name="dark_grey"/></visual></link>
+  <joint name="joint_motor_6" type="fixed"><parent link="arm_6"/><child link="motor_6"/><origin xyz="0.5 0 0.03"/></joint>
+  <link name="prop_6"><visual><geometry><cylinder radius="0.15" length="0.005"/></geometry><material name="white_prop"/></visual></link>
+  <joint name="joint_prop_6" type="continuous"><parent link="motor_6"/><child link="prop_6"/><origin xyz="0 0 0.03"/><axis xyz="0 0 1"/></joint>
+  <link name="nozzle_6"><visual><geometry><sphere radius="0.03"/></geometry><material name="blue_water"/></visual></link>
+  <joint name="joint_nozzle_6" type="fixed"><parent link="motor_6"/><child link="nozzle_6"/><origin xyz="0 0 -0.08"/></joint>
+
+</robot>
