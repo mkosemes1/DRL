@@ -1,0 +1,26 @@
+Simulation démarrée à : 20260501_125211
+ID du robot chargé : 1
+Step 0: Hauteur Z = 0.9998
+Step 10: Hauteur Z = 0.9888
+Step 20: Hauteur Z = 0.9607
+Step 30: Hauteur Z = 0.9158
+Step 40: Hauteur Z = 0.8540
+Step 50: Hauteur Z = 0.7754
+Step 60: Hauteur Z = 0.6803
+Step 70: Hauteur Z = 0.5688
+Step 80: Hauteur Z = 0.4683
+Step 90: Hauteur Z = 0.4698
+Step 100: Hauteur Z = 0.4705
+Step 110: Hauteur Z = 0.4708
+Step 120: Hauteur Z = 0.4709
+Step 130: Hauteur Z = 0.4710
+Step 140: Hauteur Z = 0.4710
+Step 150: Hauteur Z = 0.4710
+Step 160: Hauteur Z = 0.4710
+Step 170: Hauteur Z = 0.4710
+Step 180: Hauteur Z = 0.4710
+Step 190: Hauteur Z = 0.4710
+Step 200: Hauteur Z = 0.4710
+Step 210: Hauteur Z = 0.4710
+Step 220: Hauteur Z = 0.4710
+Step 230: Hauteur Z = 0.4710

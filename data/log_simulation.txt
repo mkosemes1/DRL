@@ -1,0 +1,6 @@
+[13:10:39] Système Agri-Drone prêt. État : WARMUP
+[13:10:42] Changement d'état : TAKEOFF
+[13:10:44] Début pulvérisation : Direction Droite
+[13:10:59] Changement d'état : SPRAYING_LEFT (Direction Gauche)
+[13:11:29] Mission terminée, retour au sol.
+[13:11:31] Drone posé au sol.
