@@ -8,12 +8,12 @@
   <material name="sensor_blue"><color rgba="0.0 0.5 0.8 1"/></material>
   <material name="tank_green"><color rgba="0.0 0.6 0.2 0.8"/></material>
 
-  <!-- CORPS CENTRAL ET INERTIE -->
+  <!-- CORPS CENTRAL — seul link avec masse réelle -->
   <link name="base_link">
     <inertial>
       <mass value="15.0"/>
       <origin xyz="0 0 0"/>
-      <inertia ixx="0.5" ixy="0" ixz="0" iyy="0.5" iyz="0" izz="0.9"/>
+      <inertia ixx="1.875" ixy="0" ixz="0" iyy="1.875" iyz="0" izz="3.0"/>
     </inertial>
     <visual>
       <geometry><cylinder radius="0.25" length="0.12"/></geometry>
@@ -24,36 +24,42 @@
     </collision>
   </link>
 
-  <!-- CHARGE UTILE AGRICOLE (Réservoir et Capteurs Spécifiques) -->
+  <!-- CHARGE UTILE AGRICOLE — mass=0 (visuel uniquement) -->
   <link name="agri_payload">
-    <!-- Réservoir de pulvérisation -->
+    <inertial>
+      <mass value="0.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
     <visual>
       <origin xyz="0 0 0.05"/>
       <geometry><box size="0.22 0.22 0.18"/></geometry>
       <material name="tank_green"/>
     </visual>
-    <!-- Radar de suivi de terrain (Altimètre haute précision) -->
     <visual>
       <origin xyz="0 0 -0.1"/>
       <geometry><cylinder radius="0.04" length="0.03"/></geometry>
       <material name="dark_grey"/>
     </visual>
-    <!-- Caméra Multispectrale NDVI (Analyse santé des cultures) -->
     <visual>
       <origin xyz="0.1 0 -0.07"/>
       <geometry><box size="0.05 0.05 0.03"/></geometry>
       <material name="sensor_blue"/>
     </visual>
   </link>
-
   <joint name="joint_payload" type="fixed">
     <parent link="base_link"/>
     <child link="agri_payload"/>
     <origin xyz="0 0 0"/>
   </joint>
 
-  <!-- TRAIN D'ATTERRISSAGE (PIEDS) -->
+  <!-- TRAIN D'ATTERRISSAGE — mass=0 -->
   <link name="landing_gear">
+    <inertial>
+      <mass value="0.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
     <visual>
       <origin xyz="0 0.2 -0.25"/><geometry><box size="0.6 0.05 0.03"/></geometry><material name="dark_grey"/>
     </visual>
@@ -67,23 +73,52 @@
       <origin xyz="0 -0.2 -0.25"/><geometry><box size="0.6 0.05 0.03"/></geometry>
     </collision>
   </link>
-  <joint name="joint_gear" type="fixed"><parent link="base_link"/><child link="landing_gear"/></joint>
+  <joint name="joint_gear" type="fixed">
+    <parent link="base_link"/><child link="landing_gear"/>
+    <origin xyz="0 0 0"/>
+  </joint>
 
-  <!-- BRAS DE L'HEXACOPTERE -->
+  <!-- BRAS — mass=0 -->
   <link name="arms_visual">
+    <inertial>
+      <mass value="0.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
     <visual><origin rpy="0 0 0"/><geometry><box size="1.1 0.04 0.03"/></geometry><material name="dark_grey"/></visual>
     <visual><origin rpy="0 0 1.047"/><geometry><box size="1.1 0.04 0.03"/></geometry><material name="dark_grey"/></visual>
     <visual><origin rpy="0 0 -1.047"/><geometry><box size="1.1 0.04 0.03"/></geometry><material name="dark_grey"/></visual>
   </link>
-  <joint name="joint_arms" type="fixed"><parent link="base_link"/><child link="arms_visual"/></joint>
+  <joint name="joint_arms" type="fixed">
+    <parent link="base_link"/><child link="arms_visual"/>
+    <origin xyz="0 0 0"/>
+  </joint>
 
-  <!-- SYSTÈME DE PROPULSION (6 HÉLICES) -->
-  <link name="prop_1"><visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual></link>
-  <link name="prop_2"><visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual></link>
-  <link name="prop_3"><visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual></link>
-  <link name="prop_4"><visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual></link>
-  <link name="prop_5"><visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual></link>
-  <link name="prop_6"><visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual></link>
+  <!-- HÉLICES — mass=0 (visuelles uniquement) -->
+  <link name="prop_1">
+    <inertial><mass value="0.0"/><origin xyz="0 0 0"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual>
+  </link>
+  <link name="prop_2">
+    <inertial><mass value="0.0"/><origin xyz="0 0 0"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual>
+  </link>
+  <link name="prop_3">
+    <inertial><mass value="0.0"/><origin xyz="0 0 0"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual>
+  </link>
+  <link name="prop_4">
+    <inertial><mass value="0.0"/><origin xyz="0 0 0"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual>
+  </link>
+  <link name="prop_5">
+    <inertial><mass value="0.0"/><origin xyz="0 0 0"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual>
+  </link>
+  <link name="prop_6">
+    <inertial><mass value="0.0"/><origin xyz="0 0 0"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.18" length="0.01"/></geometry><material name="red"/></visual>
+  </link>
 
   <joint name="j_p1" type="continuous"><parent link="base_link"/><child link="prop_1"/><axis xyz="0 0 1"/><origin xyz="0.55 0 0.06"/></joint>
   <joint name="j_p2" type="continuous"><parent link="base_link"/><child link="prop_2"/><axis xyz="0 0 1"/><origin xyz="-0.55 0 0.06"/></joint>
