@@ -1,5 +1,5 @@
 """
-Lancement : streamlit run supervision.py
+SUPERVISION.PY  —  Dashboard Streamlit — Drone Agricole DRL
 """
 
 import streamlit as st
@@ -143,6 +143,24 @@ def fig_rangees(rangees):
     ))
     return fig
 
+def fig_sante(sante_hist):
+    """Santé moyenne du champ (0-1, type NDVI simplifié) à la fin de chaque
+    épisode — mesure si le drone soigne réellement les plantes, pas juste
+    s'il dépense du produit (voir README §4.6)."""
+    x   = list(range(len(sante_hist)))
+    avg = pd.Series(sante_hist).rolling(20, min_periods=1).mean().tolist()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x, y=sante_hist, name="Santé finale",
+                             line=dict(color=VERT, width=1), opacity=0.35, mode="lines"))
+    fig.add_trace(go.Scatter(x=x, y=avg, name="Moy. mobile 20 ep.",
+                             line=dict(color=ORANGE, width=2.5), mode="lines"))
+    fig.update_layout(**base_layout(
+        title  = "🌱 Santé du champ en fin d'épisode (0=stressé, 1=sain)",
+        height = 280,
+        yaxis  = dict(range=[0, 1.05], gridcolor="#2C3E50"),
+    ))
+    return fig
+
 def fig_carte_champ(drone_x=None, drone_y=None, r_finies=0, r_active=0):
     RANGEES_Y = [-4.5, -1.5, 1.5, 4.5]
     fig = go.Figure()
@@ -172,12 +190,11 @@ def fig_carte_champ(drone_x=None, drone_y=None, r_finies=0, r_active=0):
     ))
     return fig
 
-# ═════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
-# ═════════════════════════════════════════════════════════════════════════════
+
 with st.sidebar:
     st.markdown('<p class="hero-title">🌿 DRL Drone</p>', unsafe_allow_html=True)
-    st.markdown('<p class="hero-sub">Drone — Supervision Agricole</p>', unsafe_allow_html=True)
+    st.markdown('<p class="hero-sub">DRL DRONE — Supervision Agricole</p>', unsafe_allow_html=True)
     st.divider()
 
     # Bouton refresh manuel — ne recharge QUE quand l'utilisateur clique
@@ -211,9 +228,8 @@ with st.sidebar:
     st.divider()
     st.caption("💡 Clique sur **Actualiser** après chaque mise à jour.")
 
-# ═════════════════════════════════════════════════════════════════════════════
 # ONGLETS
-# ═════════════════════════════════════════════════════════════════════════════
+
 tab_train, tab_mission, tab_analyse, tab_config = st.tabs([
     "📈 Entraînement",
     "🗺️ Mission",
@@ -222,9 +238,9 @@ tab_train, tab_mission, tab_analyse, tab_config = st.tabs([
 ])
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # ONGLET 1 — ENTRAÎNEMENT
-# ─────────────────────────────────────────────────────────────────────────────
+
 with tab_train:
     st.markdown('<p class="section-title">Métriques d\'entraînement</p>',
                 unsafe_allow_html=True)
@@ -243,19 +259,21 @@ with tab_train:
         """, unsafe_allow_html=True)
     else:
         # ── KPIs ──────────────────────────────────────────────────────────
-        k1, k2, k3, k4, k5 = st.columns(5)
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
         k1.metric("🕹️ Timesteps",      f"{stats.get('total_timesteps', 0):,}")
         k2.metric("🏆 Récompense moy.", f"{stats.get('mean_reward', 0):.2f}",
                   delta=f"±{stats.get('std_reward', 0):.2f}")
         k3.metric("🌾 Rangées moy.",    f"{stats.get('mean_rangees', 0):.2f} / 4")
         k4.metric("💀 Taux crash",      f"{stats.get('crash_rate', 0):.1%}")
         k5.metric("📏 Longueur ep.",    f"{stats.get('mean_ep_length', 0):.0f} steps")
+        k6.metric("🌱 Santé moy.",      f"{stats.get('mean_sante_finale', 0):.0%}")
 
         st.divider()
 
         # ── Courbes ───────────────────────────────────────────────────────
-        rewards = stats.get("rewards_history", [])
-        rangees = stats.get("rangees_history", [])
+        rewards    = stats.get("rewards_history", [])
+        rangees    = stats.get("rangees_history", [])
+        sante_hist = stats.get("sante_history", [])
 
         if not rewards:
             st.info("⏳ Entraînement démarré — les courbes apparaîtront après les premiers épisodes.")
@@ -265,6 +283,9 @@ with tab_train:
                 st.plotly_chart(fig_recompense(rewards), use_container_width=True)
             with c2:
                 st.plotly_chart(fig_rangees(rangees), use_container_width=True)
+
+            if sante_hist:
+                st.plotly_chart(fig_sante(sante_hist), use_container_width=True)
 
             # Progression rangées
             st.markdown('<p class="section-title">Progression moyenne des rangées</p>',
@@ -311,9 +332,9 @@ with tab_train:
                         cols[idx % 3].metric(k, f"{v:.3f}" if isinstance(v, float) else str(v))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # ONGLET 2 — MISSION
-# ─────────────────────────────────────────────────────────────────────────────
+
 with tab_mission:
     st.markdown('<p class="section-title">Supervision de la mission</p>',
                 unsafe_allow_html=True)
@@ -417,9 +438,9 @@ with tab_mission:
         st.plotly_chart(fig_carte_champ(), use_container_width=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # ONGLET 3 — ANALYSE CSV
-# ─────────────────────────────────────────────────────────────────────────────
+
 with tab_analyse:
     st.markdown('<p class="section-title">Analyse de la mission enregistrée</p>',
                 unsafe_allow_html=True)
@@ -500,9 +521,9 @@ with tab_analyse:
                            file_name="mission_export.csv", mime="text/csv")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # ONGLET 4 — CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
+
 with tab_config:
     st.markdown('<p class="section-title">Lancer l\'entraînement</p>',
                 unsafe_allow_html=True)
@@ -563,7 +584,7 @@ DRL/
     """, language="text")
 
     st.info(
-        "**🌿 DRL Drone Agricole** — DIT Dakar | L2 Big Data\n\n"
+        "**🌿 DRL Drone Agricole** —  L2 Big Data\n\n"
         "Agent PPO entraîné dans PyBullet pour optimiser la couverture "
         "d'arrosage sur 4 rangées agricoles avec un hexacoptère intelligent."
     )

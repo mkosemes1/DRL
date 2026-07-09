@@ -38,7 +38,7 @@ except ImportError:
     print("❌  PyTorch non installé.")
     sys.exit(1)
 
-from drone_env import DroneAgricoleEnv, MAX_STEPS
+from drone_env import DroneAgricoleEnv, MAX_STEPS, GAMMA
 
 # ─────────────────────────── Chemins ──────────────────────────────────────────
 BASE_DIR   = Path(__file__).parent
@@ -51,20 +51,36 @@ for d in [LOG_DIR, CKPT_DIR, MODEL_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────── Hyperparamètres PPO ──────────────────────────────
+# Repris des conventions "classiques" de Schulman et al. (2017) pour le
+# contrôle continu (mêmes ordres de grandeur que les benchmarks MuJoCo cités
+# dans Hands-On Modern RL, chap. 7 "PPO" et §12.2.9 — clip_range=0.2,
+# gae_lambda=0.95, réseaux [256,256] tanh, Adam lr=3e-4).
+#
+# Correctif important : l'ancien code utilisait
+#   net_arch=[dict(pi=[256,256], vf=[256,256])]   (ancienne API SB3 < 1.8)
+# Stable-Baselines3 >= 2.0 attend un dict nu, pas une liste contenant un dict :
+#   net_arch=dict(pi=[256,256], vf=[256,256])
+# L'ancienne forme est encore tolérée par une couche de compatibilité (avec un
+# UserWarning de dépréciation) mais n'est plus documentée ni garantie dans les
+# versions futures de SB3 — corrigé ici pour suivre l'API actuelle sans avertissement.
 PPO_HPARAMS = {
     "policy":        "MlpPolicy",
-    "policy_kwargs": {"net_arch": [dict(pi=[256, 256], vf=[256, 256])],
+    "policy_kwargs": {"net_arch": dict(pi=[256, 256], vf=[256, 256]),
                       "activation_fn": torch.nn.Tanh},
     "n_steps":       2048,
     "batch_size":    256,
     "n_epochs":      10,
-    "gamma":         0.995,
-    "gae_lambda":    0.95,
+    "gamma":         GAMMA,      # importé de drone_env.py : DOIT être identique au γ
+                                 # utilisé dans le shaping PBRS (théorème de Ng et al.)
+    "gae_lambda":    0.95,      # GAE (Schulman et al., 2016) : compromis biais/variance
     "learning_rate": 3e-4,
-    "clip_range":    0.2,
+    "clip_range":    0.2,       # clipping PPO standard (Schulman et al., 2017)
     "ent_coef":      0.01,
     "vf_coef":       0.5,
     "max_grad_norm": 0.5,
+    "target_kl":     0.03,      # garde-fou classique : stoppe une epoch si la
+                                 # politique dérive trop (KL > seuil), évite les
+                                 # mises à jour destructrices même sous le clipping
     "verbose":       1,
     "tensorboard_log": str(LOG_DIR),
 }
@@ -79,6 +95,7 @@ class StatsDashboardCallback(BaseCallback):
         self._ep_lengths = []
         self._rangees    = []
         self._crashes    = []
+        self._sante_fin  = []   # santé globale du champ à la fin de chaque épisode
         self._last_write = time.time()
         self._last_info  = {}
 
@@ -87,6 +104,7 @@ class StatsDashboardCallback(BaseCallback):
             if "episode" in info:
                 self._ep_rewards.append(info["episode"]["r"])
                 self._ep_lengths.append(info["episode"]["l"])
+                self._sante_fin.append(info.get("sante_globale", 0.0))
             if "rangees_finies" in info:
                 self._rangees.append(info["rangees_finies"])
                 self._crashes.append(int(info.get("crash", False)))
@@ -108,8 +126,10 @@ class StatsDashboardCallback(BaseCallback):
             "mean_ep_length":  float(np.mean(self._ep_lengths[-100:])) if self._ep_lengths else 0.,
             "mean_rangees":    float(np.mean(self._rangees[-100:]))    if self._rangees    else 0.,
             "crash_rate":      float(np.mean(self._crashes[-100:]))    if self._crashes    else 0.,
+            "mean_sante_finale": float(np.mean(self._sante_fin[-100:])) if self._sante_fin  else 0.,
             "rewards_history": [round(r, 2) for r in self._ep_rewards[-200:]],
             "rangees_history": [int(r)       for r in self._rangees[-200:]],
+            "sante_history":   [round(s, 4)  for s in self._sante_fin[-200:]],
             "last_info":       self._last_info,
         }
         try:

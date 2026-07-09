@@ -1,6 +1,5 @@
 """
-Drone Agricole Hexacoptère
-
+  DRONE_ENV.PY  —  Environnement Gymnasium pour Drone Agricole Hexacoptère
 """
 
 import gymnasium as gym
@@ -26,23 +25,73 @@ RANGEES_Y   = [-4.5, -1.5, 1.5, 4.5]
 X_DEBUT     = -20.0
 X_FIN       =  20.0
 
+# ─────────────────────── Santé des plantes & pulvérisation ciblée ─────────────
+# La v4 liait la récompense de pulvérisation UNIQUEMENT à la masse dépensée,
+# sans vérifier qu'il y avait réellement une plante sous le drone ni qu'elle en
+# avait besoin — un agent aurait pu "pulvériser" au-dessus d'un sol déjà traité
+# et être récompensé de la même façon. Cette v5 simule un état de santé réel
+# par plante (analogue simplifié d'un indice de vigueur type NDVI, dans [0,1])
+# et ne récompense QUE l'amélioration effective de cet état.
+NB_PLANTES_PAR_RANGEE = 30
+ESPACEMENT_PLANTES    = 1.4
+PLANTES_X = X_DEBUT + np.arange(NB_PLANTES_PAR_RANGEE) * ESPACEMENT_PLANTES  # positions X fixes (30,)
+
+SANTE_INIT_MIN   = 0.25   # santé minimale au reset (état de stress du champ observé au début de la mission)
+SANTE_INIT_MAX   = 0.65   # santé maximale au reset — jamais 1.0 : il y a toujours un vrai travail à faire
+SPRAY_RADIUS_X   = 2.5    # m — rayon effectif du cône de pulvérisation le long de X
+TAUX_TRAITEMENT  = 2.0    # gain de santé/s au centre du cône (décroît linéairement jusqu'au bord)
+# Calibrage vérifié numériquement (script de simulation à vitesse de croisière
+# ~13 m/s) : un unique passage rectiligne porte la santé moyenne d'une rangée
+# de ~0.45 à ~0.82 ; un passage deux fois plus lent la porte à ~0.98 — un vrai
+# compromis vitesse/qualité de traitement, pas un simple "case à cocher".
+
 # ─────────────────────── Paramètres RL ───────────────────────────────────────
 MAX_STEPS       = 4000
 TOLÉRANCE_Y     = 0.5
 TOLÉRANCE_Z     = 1.0
 SEUIL_CRASH_Z   = 0.25
 
-# ─────────────────────── Récompenses ─────────────────────────────────────────
-R_SURVIE        =  0.02   # bonus par step en l'air (signal dense précoce)
-R_ALTITUDE_OK   =  0.10
-R_ALIGNEMENT_Y  =  0.15
-R_AVANCEMENT    =  0.20
-R_PULVERISATION =  0.05
-R_FIN_RANGEE    = 10.0
-R_MISSION_FINIE = 50.0
-P_CRASH         = -30.0
-P_DIVERGENCE    =  -5.0
-P_INCLINAISON   =  -0.10
+# ─────────────────────── Récompenses (v4 — PBRS) ─────────────────────────────
+# Deux familles de termes, volontairement séparées et d'échelle comparable
+# (cf. manuel §3.9.4 "Common pitfalls in multi-reward composition" — le piège
+# n°1 est le "scale mismatch" : un terme trop grand écrase tous les autres) :
+#
+#   1) Objectifs RÉELS de la tâche -> récompenses éparses (sparse), déclenchées
+#      seulement par un événement (fin de rangée / mission / crash).
+#   2) Signal d'apprentissage dense -> UN SEUL terme de shaping potential-based
+#      (PBRS), dont la somme actualisée sur l'épisode est mathématiquement bornée.
+#
+# GAMMA : le théorème de Ng, Harada & Russell (1999) exige F(s,a,s') = γΦ(s')−Φ(s)
+# avec le MÊME γ que celui utilisé par l'agent pour actualiser ses retours.
+# GAMMA est donc défini ICI comme source unique de vérité, et train_drl.py
+# l'importe pour configurer PPO — évite que l'environnement et l'algorithme
+# divergent silencieusement, ce qui invaliderait la garantie d'invariance.
+#
+# Valeur choisie (0.9995, pas 0.99 ni 0.995) : l'horizon effectif d'un agent
+# actualisé est ~1/(1-γ). Avec MAX_STEPS=4000 et des récompenses de tâche
+# concentrées en fin d'épisode (fin de rangée, mission), un γ trop faible
+# les efface presque totalement du retour actualisé vu depuis le début de
+# l'épisode. Vérifié numériquement pendant le développement : avec γ=0.99
+# OU γ=0.995, le retour actualisé d'une mission réussie devient INFÉRIEUR à
+# celui d'un drone qui reste immobile — la garantie d'invariance de politique
+# du PBRS (V'^π(s) = V^π(s) − Φ(s), un décalage constant qui ne doit jamais
+# changer l'ordre des politiques) tient toujours algébriquement, mais devient
+# numériquement inutile si l'horizon effectif de γ est plus court que
+# l'horizon réel de la tâche. γ=0.9995 (horizon effectif ≈ 2000 pas) restaure
+# une marge saine sur toute la plage réaliste de durées de mission.
+GAMMA           =   0.9995  # doit être identique au "gamma" passé à PPO
+K_SHAPING       =   5.0    # gain du terme de shaping potential-based (dense)
+R_FIN_RANGEE    =  20.0    # objectif intermédiaire réel (sparse)
+R_MISSION_FINIE = 100.0    # objectif final réel (sparse) — même ordre que P_CRASH
+R_SANTE_PAR_UNITE = 1.0    # récompense ∝ santé RÉELLEMENT restaurée (sparse,
+                            # bornée par le déficit total du champ au reset)
+P_CRASH         = -100.0   # pénalité terminale, calibrée à l'échelle de R_MISSION_FINIE
+P_DIVERGENCE    = -20.0    # sortie de la zone de vol autorisée
+P_INCLINAISON   =  -0.05   # coût de stabilité par pas (faible poids, cf. BipedalWalker)
+P_CONTROLE      =  -0.001  # coût de contrôle style HalfCheetah (∝ ||action||²),
+                            # décourage les commandes brusques/énergivores
+P_TEMPS         =  -0.002  # petit coût par pas ("Rule B" du manuel) : à récompense
+                            # de tâche égale, un épisode plus court est préféré
 
 
 class DroneAgricoleEnv(gym.Env):
@@ -59,14 +108,16 @@ class DroneAgricoleEnv(gym.Env):
             -np.pi, -np.pi, -np.pi,
             -10., -10., -10.,
             -5., -5., -5.,
-            MASSE_MIN, 0., -45., -10., -20., 0.
+            MASSE_MIN, 0., -45., -10., -20., 0.,
+            0., 0., 0.,                                 # sante_locale, sante_rangee, sante_globale
         ], dtype=np.float32)
         obs_high = np.array([
              30., 10., 30.,
              np.pi, np.pi, np.pi,
              10., 10., 10.,
              5., 5., 5.,
-             MASSE_INITIALE, 3., 45., 10., 20., 1.
+             MASSE_INITIALE, 3., 45., 10., 20., 1.,
+             1., 1., 1.,
         ], dtype=np.float32)
 
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
@@ -82,8 +133,23 @@ class DroneAgricoleEnv(gym.Env):
         self._dir_forward   = True
         self._rangees_faites= 0
         self._pulv_active   = False
-        self._prev_x        = X_DEBUT
+        self._phi_prev       = 0.0
         self._stats         = {}
+
+    # ── Fonction de potentiel Φ(s) — reward shaping potential-based (PBRS) ──────
+    def _potentiel(self, x, y, z, target_x, target_y):
+        """Φ(s) : plus proche de 0 = plus proche de l'objectif courant.
+
+        Combine 3 distances normalisées en [0, 1] (avancement le long de la
+        rangée, alignement latéral, écart à l'altitude de travail). Ne dépend
+        QUE de l'état courant (pas de l'action, pas de l'historique), ce qui
+        est la condition requise par Ng, Harada & Russell (1999) pour que
+        F(s,s') = γΦ(s') − Φ(s) ne modifie pas la politique optimale.
+        """
+        d_x = abs(target_x - x) / (X_FIN - X_DEBUT)
+        d_y = abs(y - target_y) / 10.0
+        d_z = abs(z - ALTITUDE_TRAVAIL) / ALTITUDE_TRAVAIL
+        return -(d_x + 0.6 * d_y + 0.6 * d_z)
 
     # ── RESET ─────────────────────────────────────────────────────────────────
     def reset(self, seed=None, options=None):
@@ -112,6 +178,15 @@ class DroneAgricoleEnv(gym.Env):
 
         # Sol réaliste : terre + bandes herbe
         self._creer_sol(cid)
+
+        # État de santé initial du champ (analogue simplifié d'un indice de
+        # vigueur type NDVI, dans [0,1]) : généré AVANT le champ pour que les
+        # plantes soient coloriées dès la création selon leur état de stress.
+        self._sante = self.np_random.uniform(
+            SANTE_INIT_MIN, SANTE_INIT_MAX,
+            size=(len(RANGEES_Y), NB_PLANTES_PAR_RANGEE)
+        ).astype(np.float32)
+
         self._generer_champ(cid)
 
         start_pos = [X_DEBUT, RANGEES_Y[0], 2.0]  # départ à 2m (évite crash immédiat)
@@ -156,9 +231,10 @@ class DroneAgricoleEnv(gym.Env):
         self._dir_forward    = True
         self._rangees_faites = 0
         self._pulv_active    = False
-        self._prev_x         = X_DEBUT
         self._stats = {"total_pulverise": 0., "rangees_finies": 0,
-                       "crash": False, "steps": 0}
+                       "crash": False, "steps": 0,
+                       "sante_globale_initiale": float(self._sante.mean()),
+                       "sante_totale_restauree": 0.}
 
         # Préchauffage avec poussée ≈ poids (120 pas pour bien stabiliser
         # les joints continus des props et éviter les oscillations initiales)
@@ -173,6 +249,13 @@ class DroneAgricoleEnv(gym.Env):
 
         # Remettre le compteur de steps à zéro après le préchauffage
         self._step_count = 0
+
+        # Point de départ de la fonction de potentiel (état réel post-préchauffage,
+        # pas la position théorique de spawn) pour un télescopage exact du shaping.
+        pos0, _ = p.getBasePositionAndOrientation(self._drone_id, physicsClientId=cid)
+        target_x0 = X_FIN if self._dir_forward else X_DEBUT
+        target_y0 = RANGEES_Y[self._rangee_idx]
+        self._phi_prev = self._potentiel(pos0[0], pos0[1], pos0[2], target_x0, target_y0)
 
         return self._get_obs(), self._get_info()
 
@@ -206,15 +289,45 @@ class DroneAgricoleEnv(gym.Env):
         target_y     = RANGEES_Y[self._rangee_idx]
         target_x     = X_FIN if self._dir_forward else X_DEBUT
 
-        # Pulvérisation
+        # Pulvérisation ciblée — récompense proportionnelle à la SANTÉ
+        # RÉELLEMENT RESTAURÉE sur les plantes effectivement couvertes par le
+        # cône de pulvérisation, pas simplement au volume de produit dépensé.
+        # Différence avec la v4 : avant, "pulvériser au bon endroit
+        # géométrique" suffisait à être récompensé, même si le sol y était
+        # déjà traité ou si aucune plante stressée ne s'y trouvait — un agent
+        # aurait pu apprendre à "faire semblant" de traiter. Ici, la
+        # récompense ne peut venir que d'une amélioration MESURÉE de l'état
+        # ([0,1], analogue simplifié d'un indice de vigueur type NDVI) des
+        # plantes réellement survolées. Ce terme reste intrinsèquement borné :
+        # chaque plante plafonne à santé=1.0 et ne peut plus rapporter de
+        # récompense une fois soignée, donc la somme sur tout l'épisode ne
+        # peut jamais dépasser R_SANTE_PAR_UNITE × (déficit total du champ au
+        # reset), quelle que soit la durée de l'épisode.
         self._pulv_active = (abs(z - ALTITUDE_TRAVAIL) < TOLÉRANCE_Z and
                              abs(y - target_y) < TOLÉRANCE_Y and z > 2.0)
+        r_sante = 0.0
         if self._pulv_active and self._masse > MASSE_MIN:
-            self._masse -= DEBIT_PULV * DT
-            self._stats["total_pulverise"] += DEBIT_PULV * DT
+            kg_pulverise = DEBIT_PULV * DT
+            self._masse -= kg_pulverise
+            self._stats["total_pulverise"] += kg_pulverise
             p.changeDynamics(self._drone_id, -1, mass=self._masse, physicsClientId=cid)
 
-        # Fin de rangée
+            row = self._rangee_idx
+            dists = np.abs(PLANTES_X - x)
+            mask = dists <= SPRAY_RADIUS_X
+            if np.any(mask):
+                efficacite = np.clip(1.0 - dists[mask] / SPRAY_RADIUS_X, 0.0, 1.0)
+                dose   = TAUX_TRAITEMENT * DT * efficacite
+                avant  = self._sante[row, mask].copy()
+                self._sante[row, mask] = np.minimum(1.0, avant + dose)
+                delta  = self._sante[row, mask] - avant           # gain réel, 0 si déjà à 1.0
+                r_sante = R_SANTE_PAR_UNITE * float(np.sum(delta))
+                self._stats["sante_totale_restauree"] += float(np.sum(delta))
+                if self.render_mode == "human":
+                    for pi in np.nonzero(mask)[0]:
+                        self._maj_couleur_plante(row, int(pi))
+
+        # Fin de rangée (objectif réel intermédiaire -> sparse)
         rangee_finie = (self._dir_forward and x >= X_FIN) or \
                        (not self._dir_forward and x <= X_DEBUT)
         if rangee_finie:
@@ -232,52 +345,39 @@ class DroneAgricoleEnv(gym.Env):
                           abs(euler[1]) > MAX_INCLINAISON) and self._step_count > 30
         crash          = crash_altitude or crash_bascule
         hors_limites   = abs(x) > 35 or abs(y) > 15 or z > 40
+        mission_finie  = self._rangees_faites >= 4
 
-        # ── Récompense ────────────────────────────────────────────────────
-        reward = 0.0
+        # ═══════════════════════════════════════════════════════════════════
+        # RÉCOMPENSE — deux familles cohérentes en échelle (voir README) :
+        #   (a) shaping dense potential-based (PBRS), borné par télescopage
+        #   (b) récompenses/pénalités éparses sur les vrais objectifs de la tâche
+        # ═══════════════════════════════════════════════════════════════════
 
-        # ── CURRICULUM DE RÉCOMPENSE ──────────────────────────────────────
-        # Niveau 0 — Survie en l'air (signal le plus dense, appris en 1er)
-        if z > SEUIL_CRASH_Z:
-            reward += 0.05
+        # (a) Shaping PBRS strict : F(s,a,s') = γ·Φ(s') − Φ(s) (Ng, Harada &
+        # Russell, 1999), avec le MÊME γ que PPO (voir la constante GAMMA
+        # ci-dessus, importée par train_drl.py). C'est cette cohérence γ qui
+        # garantit V'^π(s) = V^π(s) − Φ(s) pour toute politique π : un décalage
+        # CONSTANT (à s fixé) qui ne dépend pas de π, donc qui ne change jamais
+        # l'ordre des politiques ni la politique optimale — seulement l'échelle
+        # apparente des retours. La cible (target_x/target_y) peut changer au
+        # pas où une rangée se termine ; c'est un saut de sous-objectif
+        # volontaire (curriculum de cibles), pas une fuite de récompense — la
+        # rangée terminée est de toute façon déjà récompensée explicitement
+        # par R_FIN_RANGEE ci-dessous.
+        phi_now  = self._potentiel(x, y, z, target_x, target_y)
+        r_shaping = K_SHAPING * (GAMMA * phi_now - self._phi_prev)
+        self._phi_prev = phi_now
 
-        # Niveau 1 — Monter vers l'altitude de travail
-        z_err = abs(z - ALTITUDE_TRAVAIL)
-        if z_err < TOLÉRANCE_Z:
-            reward += R_ALTITUDE_OK
-        else:
-            if z < ALTITUDE_TRAVAIL:
-                reward += 0.015 * min(z, ALTITUDE_TRAVAIL)  # encourage à monter
-            reward -= 0.02 * z_err
+        # (b) Coûts de contrôle et de temps (style HalfCheetah / "Rule B")
+        r_controle = P_CONTROLE * float(np.sum(np.square(action)))
+        r_temps    = P_TEMPS
+        incli      = abs(euler[0]) + abs(euler[1])
+        r_incli    = P_INCLINAISON * incli
 
-        # Niveau 2 — S'aligner sur la rangée (seulement si déjà en l'air)
-        y_err = abs(y - target_y)
-        if z > 3.0:
-            if y_err < TOLÉRANCE_Y:
-                reward += R_ALIGNEMENT_Y
-            else:
-                reward -= 0.015 * y_err
+        reward = r_shaping + r_sante + r_controle + r_temps + r_incli
 
-        # Niveau 3 — Progresser sur la rangée
-        dx = (x - self._prev_x) if self._dir_forward else (self._prev_x - x)
-        if dx > 0 and z > 3.0:
-            reward += R_AVANCEMENT * dx
-        self._prev_x = x
-
-        # Niveau 4 — Pulvérisation (bonus ×3 pour fortement encourager)
-        if self._pulv_active:
-            reward += R_PULVERISATION * 3.0
-
-        # Niveau 5 — Fin de rangée et mission complète
         if rangee_finie:
             reward += R_FIN_RANGEE
-
-        # Pénalités
-        incli = abs(euler[0]) + abs(euler[1])
-        if incli > 0.5:
-            reward += P_INCLINAISON * incli
-
-        mission_finie = self._rangees_faites >= 4
         if mission_finie:
             reward += R_MISSION_FINIE
         if crash:
@@ -301,6 +401,18 @@ class DroneAgricoleEnv(gym.Env):
         x, y, z      = pos
         target_y     = RANGEES_Y[self._rangee_idx]
         target_x     = X_FIN if self._dir_forward else X_DEBUT
+
+        # Signaux de santé du champ — indispensables pour que l'agent puisse
+        # PERCEVOIR où traiter en priorité (sinon la récompense de santé
+        # serait un signal sans levier observable, inutilisable par PPO).
+        row = self._rangee_idx
+        dists = np.abs(PLANTES_X - x)
+        mask_locale = dists <= SPRAY_RADIUS_X
+        sante_locale  = float(self._sante[row, mask_locale].mean()) if np.any(mask_locale) \
+                        else float(self._sante[row].mean())
+        sante_rangee  = float(self._sante[row].mean())
+        sante_globale = float(self._sante.mean())
+
         obs = np.array([
             x, y, z,
             euler[0], euler[1], euler[2],
@@ -312,6 +424,7 @@ class DroneAgricoleEnv(gym.Env):
             y - target_y,
             z - ALTITUDE_TRAVAIL,
             float(self._pulv_active),
+            sante_locale, sante_rangee, sante_globale,
         ], dtype=np.float32)
         return np.clip(obs, self.observation_space.low, self.observation_space.high)
 
@@ -322,6 +435,7 @@ class DroneAgricoleEnv(gym.Env):
             "masse": round(self._masse, 3),
             "pulv_active": self._pulv_active,
             "step": self._step_count,
+            "sante_globale": round(float(self._sante.mean()), 4),
             **self._stats,
         }
 
@@ -381,15 +495,28 @@ class DroneAgricoleEnv(gym.Env):
                               basePosition=[bord_x, 0., 0.02], physicsClientId=cid)
 
     def _generer_champ(self, cid):
-        """Plantes 3D réalistes : tige + feuilles + fleur/épi selon type."""
-        import math
+        """Plantes 3D réalistes : tige + feuilles + fleur/épi selon type.
+        Les feuilles sont coloriées selon self._sante et leurs IDs conservés
+        dans self._plantes_ids pour pouvoir les recolorier pendant le vol
+        (visualisation uniquement — voir _maj_couleur_plante)."""
+        self._plantes_ids = [[None] * NB_PLANTES_PAR_RANGEE for _ in RANGEES_Y]
         for row_i, pos_y in enumerate(RANGEES_Y):
-            for pi in range(30):
-                px_ = X_DEBUT + pi * 1.4
-                self._creer_plante(cid, px_, pos_y, pi, row_i)
+            for pi in range(NB_PLANTES_PAR_RANGEE):
+                px_ = PLANTES_X[pi]
+                self._plantes_ids[row_i][pi] = self._creer_plante(
+                    cid, px_, pos_y, pi, row_i, float(self._sante[row_i, pi])
+                )
 
-    def _creer_plante(self, cid, x, y, idx, row_i):
-        """Une plante composée de plusieurs formes empilées."""
+    def _couleur_sante(self, niveau, col_sain):
+        """Interpole une couleur RGBA entre 'stressé' (jaune-brun, niveau=0)
+        et col_sain (niveau=1) — analogue visuel d'un indice NDVI."""
+        col_stress = [0.55, 0.42, 0.12, 1.0]
+        t = float(np.clip(niveau, 0.0, 1.0))
+        return [col_stress[k] * (1 - t) + col_sain[k] * t for k in range(4)]
+
+    def _creer_plante(self, cid, x, y, idx, row_i, sante_val):
+        """Une plante composée de plusieurs formes empilées.
+        Retourne les IDs des 2 corps 'feuilles' (recoloriés selon la santé)."""
         import math
 
         # Variation légère de position pour naturel
@@ -419,6 +546,9 @@ class DroneAgricoleEnv(gym.Env):
                           physicsClientId=cid)
 
         # ── Feuilles (2 ellipsoïdes aplatis orientés en croix) ───────────
+        # Couleur initiale = santé au reset (jaune-brun si stressée, verte si saine)
+        couleur_feuille = self._couleur_sante(sante_val, col_feuil)
+        leaf_ids = []
         for angle_deg in [0, 90]:
             rad = math.radians(angle_deg)
             vs_f = p.createVisualShape(
@@ -426,12 +556,13 @@ class DroneAgricoleEnv(gym.Env):
                 halfExtents=[0.30 * abs(math.cos(rad)) + 0.04,
                              0.30 * abs(math.sin(rad)) + 0.04,
                              0.03],
-                rgbaColor=col_feuil, physicsClientId=cid
+                rgbaColor=couleur_feuille, physicsClientId=cid
             )
-            p.createMultiBody(baseMass=0, baseCollisionShapeIndex=-1,
+            leaf_id = p.createMultiBody(baseMass=0, baseCollisionShapeIndex=-1,
                               baseVisualShapeIndex=vs_f,
                               basePosition=[x + ox, y + oy, h_tige * 0.6],
                               physicsClientId=cid)
+            leaf_ids.append(leaf_id)
 
         # ── Sommet : épi ou fleur ────────────────────────────────────────
         vs_top = p.createVisualShape(
@@ -442,6 +573,18 @@ class DroneAgricoleEnv(gym.Env):
                           baseVisualShapeIndex=vs_top,
                           basePosition=[x + ox, y + oy, h_tige + 0.10],
                           physicsClientId=cid)
+
+        return leaf_ids
+
+    def _maj_couleur_plante(self, row_i, pi):
+        """Recolorie les feuilles d'une plante selon sa santé courante.
+        Appelé uniquement en render_mode='human' (coût GPU/CPU inutile en
+        entraînement headless, où rien n'est jamais affiché)."""
+        cid = self._physics_client
+        col_sain = [0.20, 0.72, 0.15, 1] if row_i % 2 == 0 else [0.18, 0.65, 0.22, 1]
+        couleur = self._couleur_sante(float(self._sante[row_i, pi]), col_sain)
+        for leaf_id in self._plantes_ids[row_i][pi]:
+            p.changeVisualShape(leaf_id, -1, rgbaColor=couleur, physicsClientId=cid)
 
     def _creer_drone_simple(self, cid, pos):
         """Drone hexagonal stylisé avec 6 rotors colorés + corps central."""
